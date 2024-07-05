@@ -1,9 +1,11 @@
 
-# ArtemisAPI Python Class
+# Artemis Analytics Python API
 
 ## Overview
 
 The `ArtemisAPI` class provides a convenient interface for interacting with the Artemis API to fetch asset data, metrics, and developer activity information. It allows users to retrieve data in the form of pandas DataFrames and visualize it using Plotly.
+
+Visit artemis.xyz to explore their data and get an 'API Key'
 
 ## Features
 
@@ -75,6 +77,20 @@ start_date = "2023-01-01"
 metric = "price"
 data = api.get_data(asset_id, start_date, metric)
 print(data)
+```
+
+### Fetching Data for Multiple Metrics and/or Assets
+
+To fetch data for a set metrics for one or more assets:
+
+```python
+api = ArtemisAPI(api_key="api_key_here")
+asset_ids = ["bitcoin", "ethereum"]
+metrics = ["price", "mc"]
+start_date = "2023-06-01"
+end_date = "2023-06-10"
+
+data = api.get_data(asset_ids, metrics, start_date, end_date)
 ```
 
 ### Listing Supported Ecosystems

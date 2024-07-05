@@ -3,7 +3,6 @@
 import pandas as pd
 import requests
 from datetime import datetime
-import plotly.express as px
 import logging
 
 class ArtemisAPI:

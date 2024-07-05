@@ -1,17 +1,21 @@
 from setuptools import setup, find_packages
 
+with open("README.md", "r", encoding="utf-8") as fh:
+    long_description = fh.read()
+
 setup(
-    name="artemis_py",
-    version="0.1.0",
+    name="artemis-py",  
+    version="0.2.1",
     description="A package to interact with the Artemis API. Blame ChatGPT for errors.",
+    long_description=long_description,
+    long_description_content_type="text/markdown",
     author="Matt Maximo",
     author_email="matt@pioneerdigital.org",
-    url="https://github.com/MattMaximo/artemis_py",  
+    url="https://github.com/MattMaximo/artemis_py",
     packages=find_packages(),
     install_requires=[
         "pandas",
         "requests",
-        "plotly"
     ],
     classifiers=[
         "Programming Language :: Python :: 3",
