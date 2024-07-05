@@ -1,7 +1,10 @@
+# %%
+
 import pandas as pd
 import requests
 from datetime import datetime
 import plotly.express as px
+import logging
 
 class ArtemisAPI:
     """
@@ -23,6 +26,30 @@ class ArtemisAPI:
         self.api_key = api_key
         self.base_url = "https://api.artemisxyz.com"
         self.headers = {"Accept": "application/json"}
+        logging.basicConfig(level=logging.INFO)
+
+    def _get(self, endpoint, params=None):
+        """
+        Internal method to perform a GET request.
+
+        Args:
+            endpoint (str): The API endpoint.
+            params (dict): Parameters for the request.
+
+        Returns:
+            dict: JSON response from the API.
+        """
+        params = params or {}
+        params["APIKey"] = self.api_key
+        url = f"{self.base_url}{endpoint}"
+        try:
+            response = requests.get(url, headers=self.headers, params=params)
+            response.raise_for_status()
+            return response.json()
+        except requests.exceptions.HTTPError as http_err:
+            logging.error(f"HTTP error occurred: {http_err}")
+        except Exception as err:
+            logging.error(f"An error occurred: {err}")
 
     def get_assets(self):
         """
@@ -31,11 +58,9 @@ class ArtemisAPI:
         Returns:
             pd.DataFrame: DataFrame containing the list of assets.
         """
-        url = f"{self.base_url}/asset"
-        params = {"APIKey": self.api_key}
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return pd.DataFrame(response.json()["assets"])
+        data = self._get('/asset')
+        if data:
+            return pd.DataFrame(data.get("assets", []))
 
     def get_asset_metrics(self, asset_id):
         """
@@ -47,109 +72,118 @@ class ArtemisAPI:
         Returns:
             pd.DataFrame: DataFrame containing the available metrics for the asset.
         """
-        url = f"{self.base_url}/asset/{asset_id}/metric"
-        params = {"APIKey": self.api_key}
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        return pd.DataFrame(response.json())
+        data = self._get(f'/asset/{asset_id}/metric')
+        if data:
+            return pd.DataFrame(data)
 
-    def get_data(self, asset_id, start_date, metric, end_date=None):
+    def get_data(self, asset_ids, metrics, start_date, end_date=None):
         """
-        Fetch data for a specific metric of an asset from the Artemis API.
+        Fetch data for specific metrics of assets from the Artemis API.
 
         Args:
-            asset_id (str): The ID of the asset.
+            asset_ids (list): List of IDs of the assets.
             start_date (str): The start date for the data in 'yyyy-mm-dd' format.
-            metric (str): The metric to fetch data for (e.g., 'mc' for market cap).
+            metrics (list): List of metrics to fetch data for (e.g., ['mc', 'price']).
             end_date (str, optional): The end date for the data in 'yyyy-mm-dd' format. Defaults to the current date.
 
         Returns:
-            pd.DataFrame: DataFrame containing the data for the specified metric and asset.
+            pd.DataFrame: DataFrame containing the data for the specified metrics and assets.
         """
         if end_date is None:
             end_date = datetime.now().strftime("%Y-%m-%d")
-        url = f"{self.base_url}/data/{metric}"
+        
+        # Ensure asset_ids and metrics are lists
+        if isinstance(asset_ids, str):
+            asset_ids = [asset_ids]
+        if isinstance(metrics, str):
+            metrics = [metrics]
+        
+        all_data = []
+
+        for asset_id in asset_ids:
+            asset_data = None
+            for metric in metrics:
+                params = {
+                    "artemisIds": asset_id,
+                    "startDate": start_date,
+                    "endDate": end_date,
+                }
+                data = self._get(f'/data/{metric}', params)
+                if data:
+                    json_data = data["data"]["artemis_ids"].get(asset_id, {}).get(metric, [])
+                    df = pd.DataFrame(json_data)
+                    if not df.empty:
+                        df.rename(columns={"val": metric}, inplace=True)
+                        df["date"] = pd.to_datetime(df["date"])
+                        if asset_data is None:
+                            asset_data = df
+                        else:
+                            asset_data = pd.merge(asset_data, df, on="date", how="outer")
+            
+            if asset_data is not None:
+                asset_data["artemis_id"] = asset_id
+                all_data.append(asset_data)
+        
+        if all_data:
+            result_df = pd.concat(all_data, axis=0)
+            result_df = result_df.reset_index(drop=True)
+            return result_df
+        else:
+            return pd.DataFrame()
+
+    def query_weekly_commits_for_ecosystem(self, ecosystem=None, include_forks=None, days_back=None):
+        """
+        Fetch weekly commits data for ecosystems.
+
+        Args:
+            ecosystem (str, optional): Name of the ecosystem. Defaults to None.
+            include_forks (bool, optional): Include forks in the data. Defaults to None.
+            days_back (int, optional): Days back from today to pull data for. Defaults to None.
+
+        Returns:
+            pd.DataFrame: DataFrame containing the weekly commits data.
+        """
         params = {
-            "artemisIds": asset_id,
-            "startDate": start_date,
-            "endDate": end_date,
-            "APIKey": self.api_key,
+            "ecosystem": ecosystem,
+            "includeForks": include_forks,
+            "daysBack": days_back,
         }
-        response = requests.get(url, headers=self.headers, params=params)
-        response.raise_for_status()
-        json_data = response.json()["data"]["artemis_ids"][asset_id][metric]
-        data = pd.DataFrame(json_data)
-        data.rename(columns={"val": metric}, inplace=True)
-        return data
+        data = self._get('/weekly-commits', params)
+        if data:
+            return pd.DataFrame(data)
 
-    def plot_data(self, data, title):
-        y_columns = [col for col in data.columns if col != "date"]
-        fig = px.line(data, x="date", y=y_columns, title=title)
-        fig.update_layout(
-            legend=dict(
-                orientation="h", yanchor="bottom", y=1.02, xanchor="right", x=0.5
-            )
-        )
-        return fig
+    def query_active_devs_for_ecosystem(self, ecosystem=None, include_forks=None, days_back=None):
+        """
+        Fetch weekly active developer data for ecosystems.
 
-    def plot_weekly_data(self, data, title):
-        y_columns = [col for col in data.columns if col != "date"]
+        Args:
+            ecosystem (str, optional): Name of the ecosystem. Defaults to None.
+            include_forks (bool, optional): Include forks in the data. Defaults to None.
+            days_back (int, optional): Days back from today to pull data for. Defaults to None.
 
-        # Calculate 7D Performance
-        first_value = data[y_columns[0]].iloc[0]
-        last_value = data[y_columns[0]].iloc[-1]
-        performance = ((last_value - first_value) / first_value) * 100
+        Returns:
+            pd.DataFrame: DataFrame containing the weekly active developer data.
+        """
+        params = {
+            "ecosystem": ecosystem,
+            "includeForks": include_forks,
+            "daysBack": days_back,
+        }
+        data = self._get('/weekly-active-devs', params)
+        if data:
+            return pd.DataFrame(data)
 
-        # Determine performance box color
-        performance_color = (
-            "rgba(0, 255, 0, 0.2)" if performance >= 0 else "rgba(255, 0, 0, 0.2)"
-        )
-        # Create the line plot
-        fig = px.bar(data, x="date", y=y_columns, title=title)
 
-        # Update layout
-        fig.update_layout(
-            title={
-                "text": title,
-                "y": 0.9,
-                "x": 0.5,
-                "xanchor": "center",
-                "yanchor": "top",
-                "font": dict(family="Arial", size=20, color="black"),
-            },
-            plot_bgcolor="white",
-            xaxis=dict(showgrid=False, tickformat="%d-%b"),
-            yaxis=dict(showgrid=False, tickprefix=""),
-            showlegend=False,
-        )
 
-        # Add annotations with dashed boxes
-        fig.add_annotation(
-            xref="paper",
-            yref="paper",
-            x=0.01,
-            y=1.1,
-            text=f"7D Performance:\n{performance:.2f}%",
-            showarrow=False,
-            font=dict(family="Arial", size=12, color="black"),
-            bgcolor=performance_color,
-            bordercolor="black",
-            borderwidth=1,
-            borderpad=4,
-        )
 
-        fig.add_annotation(
-            xref="paper",
-            yref="paper",
-            x=0.99,
-            y=1.1,
-            text=f"Current Value:\n{last_value:.2f}",
-            showarrow=False,
-            font=dict(family="Arial", size=12, color="black"),
-            bgcolor="white",
-            bordercolor="black",
-            borderwidth=1,
-            borderpad=4,
-        )
+# Example usage
+if __name__ == "__main__":
+    api = ArtemisAPI(api_key="api_key_here")
+    asset_ids = ["bitcoin", "ethereum"]
+    metrics = ["price", "mc"]
+    start_date = "2023-06-01"
+    end_date = "2023-06-10"
 
-        return fig
+    data = api.get_data(asset_ids, metrics, start_date, end_date)
+
+# %%
