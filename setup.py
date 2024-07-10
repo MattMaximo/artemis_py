@@ -5,8 +5,8 @@ with open("README.md", "r", encoding="utf-8") as fh:
 
 setup(
     name="artemis-py",  
-    version="0.2.1",
-    description="A package to interact with the Artemis API. Blame ChatGPT for errors.",
+    version="0.2.2",
+    description="A package to interact with the Artemis API. Visit artemis.xyz for more.",
     long_description=long_description,
     long_description_content_type="text/markdown",
     author="Matt Maximo",

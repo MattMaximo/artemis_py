@@ -1,12 +1,7 @@
 /venv
 /.env
-*.sqlite
 /build
 /crypto_dash.egg-info
-*.pem
-TEST_QUERY.sql
-TEST_SCRIPT.py
-/fireblocks
 *.egg-info
 dist
-.ds_store
+
